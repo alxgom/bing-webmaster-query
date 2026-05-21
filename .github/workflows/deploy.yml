@@ -1,0 +1,38 @@
+name: Deploy to GCP Cloud Functions
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: 'google-github-actions/auth@v2'
+        with:
+          # You will need to set up Workload Identity Federation or use a Service Account Key
+          # Recommendation: Use Workload Identity Federation
+          # workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/my-pool/providers/my-provider'
+          # service_account: 'my-service-account@web-alexisgomel.iam.gserviceaccount.com'
+          credentials_json: '${{ secrets.GCP_SA_KEY }}' # Alternative if not using Workload Identity
+
+      - name: 'Deploy to Cloud Functions'
+        uses: 'google-github-actions/deploy-cloud-functions@v2'
+        with:
+          name: 'bing-webmaster-updater'
+          runtime: 'python311'
+          region: 'us-central1' # Change to your preferred region
+          entry_point: 'main'
+          trigger_http: true
+          allow_unauthenticated: false
