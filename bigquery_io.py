@@ -44,8 +44,12 @@ def upload_rows(client, project_id, dataset_id, table_id, schema, rows, partitio
         select_fields = "Date"
         if dedupe_field:
             select_fields += f", {dedupe_field}"
+            
+        # Add SiteUrl filter if present in rows
+        site_url_val = rows[0].get("SiteUrl")
+        site_url_filter = f" AND SiteUrl = '{site_url_val}'" if site_url_val else ""
         
-        query = f"SELECT DISTINCT {select_fields} FROM `{project_id}.{dataset_id}.{table_id}` WHERE Date >= '{cutoff_date}'"
+        query = f"SELECT DISTINCT {select_fields} FROM `{project_id}.{dataset_id}.{table_id}` WHERE Date >= '{cutoff_date}'{site_url_filter}"
         query_job = client.query(query)
         for row in query_job.result():
             if dedupe_field:

@@ -46,7 +46,10 @@ def process_site(bq_client, registry, site, days_back=7):
             if cutoff_date and parsed_date < cutoff_date:
                 continue
 
-            row = {"Date": parsed_date}
+            row = {
+                "Date": parsed_date,
+                "SiteUrl": site_url
+            }
             if data_type == "site_daily":
                 row["Impressions"] = s.get("Impressions", 0)
                 row["Clicks"] = s.get("Clicks", 0)
@@ -71,7 +74,10 @@ def process_site(bq_client, registry, site, days_back=7):
 
         # 3. Define Schema and Upload
         table_id = TABLES[data_type]
-        schema = [bigquery.SchemaField("Date", "DATE")]
+        schema = [
+            bigquery.SchemaField("Date", "DATE"),
+            bigquery.SchemaField("SiteUrl", "STRING")
+        ]
         clustering_fields = []
 
         if data_type == "site_daily":
@@ -79,6 +85,7 @@ def process_site(bq_client, registry, site, days_back=7):
                 bigquery.SchemaField("Impressions", "INTEGER"),
                 bigquery.SchemaField("Clicks", "INTEGER")
             ]
+            clustering_fields = ["SiteUrl"]
         elif data_type == "pages":
             schema += [
                 bigquery.SchemaField("Url", "STRING"),
@@ -88,7 +95,7 @@ def process_site(bq_client, registry, site, days_back=7):
                 bigquery.SchemaField("AvgImpressionPosition", "FLOAT64"),
                 bigquery.SchemaField("AvgClickPosition", "FLOAT64")
             ]
-            clustering_fields = ["LandingPath"]
+            clustering_fields = ["SiteUrl", "LandingPath"]
         else: # queries
             schema += [
                 bigquery.SchemaField("Query", "STRING"),
@@ -97,7 +104,7 @@ def process_site(bq_client, registry, site, days_back=7):
                 bigquery.SchemaField("AvgImpressionPosition", "FLOAT64"),
                 bigquery.SchemaField("AvgClickPosition", "FLOAT64")
             ]
-            clustering_fields = ["Query"]
+            clustering_fields = ["SiteUrl", "Query"]
 
         # Dedupe field for BQ query
         if data_type == "pages":
