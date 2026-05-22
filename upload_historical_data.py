@@ -14,6 +14,7 @@ PROJECT_ID = "web-alexisgomel"
 DATASET_ID = "webmaster"
 TABLE_QUERIES = "searchdata_queries"
 TABLE_PAGES = "searchdata_pages"
+TABLE_SITE_DAILY = "searchdata_site_daily"
 SECRET_ID = "BING_API_KEY"
 
 def get_secret(project_id, secret_id, version_id="latest"):
@@ -102,18 +103,30 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         
     # Ensure table exists
     table_ref = dataset_ref.table(table_id)
-    string_field_name = "Query" if data_type == "query" else "Url"
-    schema = [
-        bigquery.SchemaField("Date", "DATE"),
-        bigquery.SchemaField(string_field_name, "STRING"),
-        bigquery.SchemaField("Impressions", "INTEGER"),
-        bigquery.SchemaField("Clicks", "INTEGER"),
-        bigquery.SchemaField("AvgImpressionPosition", "INTEGER"),
-        bigquery.SchemaField("AvgClickPosition", "INTEGER"),
-    ]
+    
+    if data_type == "site_daily":
+        schema = [
+            bigquery.SchemaField("Date", "DATE"),
+            bigquery.SchemaField("Impressions", "INTEGER"),
+            bigquery.SchemaField("Clicks", "INTEGER"),
+        ]
+        clustering_fields = []
+    else:
+        string_field_name = "Query" if data_type == "query" else "Url"
+        schema = [
+            bigquery.SchemaField("Date", "DATE"),
+            bigquery.SchemaField(string_field_name, "STRING"),
+            bigquery.SchemaField("Impressions", "INTEGER"),
+            bigquery.SchemaField("Clicks", "INTEGER"),
+            bigquery.SchemaField("AvgImpressionPosition", "INTEGER"),
+            bigquery.SchemaField("AvgClickPosition", "INTEGER"),
+        ]
+        clustering_fields = [string_field_name]
+
     table = bigquery.Table(table_ref, schema=schema)
     table.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field="Date")
-    table.clustering_fields = [string_field_name]
+    if clustering_fields:
+        table.clustering_fields = clustering_fields
     
     try:
         client.get_table(table_ref)
@@ -124,17 +137,21 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
     # Format and Insert
     rows_to_insert = []
     for s in data_records:
-        row = {
-            "Date": parse_bing_date(s.get("Date")),
-            string_field_name: s.get(string_field_name, ""),
-            "Impressions": s.get("Impressions", 0),
-            "Clicks": s.get("Clicks", 0),
-            "AvgImpressionPosition": s.get("AvgImpressionPosition", 0),
-            "AvgClickPosition": s.get("AvgClickPosition", 0)
-        }
+        row = {"Date": parse_bing_date(s.get("Date"))}
+        
+        if data_type == "site_daily":
+            row["Impressions"] = s.get("Impressions", 0)
+            row["Clicks"] = s.get("Clicks", 0)
+        else:
+            string_field_name = "Query" if data_type == "query" else "Url"
+            row[string_field_name] = s.get(string_field_name, "")
+            row["Impressions"] = s.get("Impressions", 0)
+            row["Clicks"] = s.get("Clicks", 0)
+            row["AvgImpressionPosition"] = s.get("AvgImpressionPosition", 0)
+            row["AvgClickPosition"] = s.get("AvgClickPosition", 0)
+            
         rows_to_insert.append(row)
         
-    # Large historical data might need chunking, but for 16 months of stats it's usually fine in one go.
     errors = client.insert_rows_json(table_ref, rows_to_insert)
     if not errors:
         print(f"Successfully loaded {len(rows_to_insert)} historical rows into {table_id}.")
@@ -156,6 +173,12 @@ def main():
     # 2. Historical Page Stats
     page_stats = fetch_bing_data(api_key, SITE_URL, "GetPageStats")
     upload_to_bigquery(page_stats, PROJECT_ID, DATASET_ID, TABLE_PAGES, "page")
+
+    print("-" * 30)
+
+    # 3. Historical Site Daily Stats
+    site_stats = fetch_bing_data(api_key, SITE_URL, "GetRankAndTrafficStats")
+    upload_to_bigquery(site_stats, PROJECT_ID, DATASET_ID, TABLE_SITE_DAILY, "site_daily")
 
 if __name__ == "__main__":
     main()

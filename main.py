@@ -14,6 +14,7 @@ PROJECT_ID = "web-alexisgomel"
 DATASET_ID = "webmaster"
 TABLE_QUERIES = "searchdata_queries"
 TABLE_PAGES = "searchdata_pages"
+TABLE_SITE_DAILY = "searchdata_site_daily"
 SECRET_ID = "BING_API_KEY"  # Name of the secret in GCP Secret Manager
 
 def get_secret(project_id, secret_id, version_id="latest"):
@@ -104,26 +105,29 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
     # 2. Create table if it doesn't exist
     table_ref = dataset_ref.table(table_id)
     
-    # Determine the name of the string field based on the data type
-    string_field_name = "Query" if data_type == "query" else "Url"
-    
-    schema = [
-        bigquery.SchemaField("Date", "DATE"),
-        bigquery.SchemaField(string_field_name, "STRING"),
-        bigquery.SchemaField("Impressions", "INTEGER"),
-        bigquery.SchemaField("Clicks", "INTEGER"),
-        bigquery.SchemaField("AvgImpressionPosition", "INTEGER"),
-        bigquery.SchemaField("AvgClickPosition", "INTEGER"),
-    ]
-    
+    if data_type == "site_daily":
+        schema = [
+            bigquery.SchemaField("Date", "DATE"),
+            bigquery.SchemaField("Impressions", "INTEGER"),
+            bigquery.SchemaField("Clicks", "INTEGER"),
+        ]
+        clustering_fields = []
+    else:
+        string_field_name = "Query" if data_type == "query" else "Url"
+        schema = [
+            bigquery.SchemaField("Date", "DATE"),
+            bigquery.SchemaField(string_field_name, "STRING"),
+            bigquery.SchemaField("Impressions", "INTEGER"),
+            bigquery.SchemaField("Clicks", "INTEGER"),
+            bigquery.SchemaField("AvgImpressionPosition", "INTEGER"),
+            bigquery.SchemaField("AvgClickPosition", "INTEGER"),
+        ]
+        clustering_fields = [string_field_name]
+
     table = bigquery.Table(table_ref, schema=schema)
-    
-    # Add partitioning and clustering
-    table.time_partitioning = bigquery.TimePartitioning(
-        type_=bigquery.TimePartitioningType.DAY,
-        field="Date"
-    )
-    table.clustering_fields = [string_field_name]
+    table.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field="Date")
+    if clustering_fields:
+        table.clustering_fields = clustering_fields
     
     try:
         client.get_table(table_ref)
@@ -141,14 +145,19 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         
         # Only include if the date is within our window
         if parsed_date and parsed_date >= cutoff_date:
-            row = {
-                "Date": parsed_date,
-                string_field_name: s.get(string_field_name, ""),
-                "Impressions": s.get("Impressions", 0),
-                "Clicks": s.get("Clicks", 0),
-                "AvgImpressionPosition": s.get("AvgImpressionPosition", 0),
-                "AvgClickPosition": s.get("AvgClickPosition", 0)
-            }
+            row = {"Date": parsed_date}
+            
+            if data_type == "site_daily":
+                row["Impressions"] = s.get("Impressions", 0)
+                row["Clicks"] = s.get("Clicks", 0)
+            else:
+                string_field_name = "Query" if data_type == "query" else "Url"
+                row[string_field_name] = s.get(string_field_name, "")
+                row["Impressions"] = s.get("Impressions", 0)
+                row["Clicks"] = s.get("Clicks", 0)
+                row["AvgImpressionPosition"] = s.get("AvgImpressionPosition", 0)
+                row["AvgClickPosition"] = s.get("AvgClickPosition", 0)
+            
             rows_to_insert.append(row)
         
     # 4. Insert data
@@ -174,21 +183,19 @@ def main(request=None):
 
     # 1. Fetch and upload Query Stats
     query_stats = fetch_bing_data(api_key, SITE_URL, "GetQueryStats")
-    if query_stats:
-        print(f"Found {len(query_stats)} query records.")
-        upload_to_bigquery(query_stats, PROJECT_ID, DATASET_ID, TABLE_QUERIES, "query")
-    else:
-        print("No query stats to upload.")
+    upload_to_bigquery(query_stats, PROJECT_ID, DATASET_ID, TABLE_QUERIES, "query")
 
     print("-" * 30)
 
     # 2. Fetch and upload Page Stats
     page_stats = fetch_bing_data(api_key, SITE_URL, "GetPageStats")
-    if page_stats:
-        print(f"Found {len(page_stats)} page records.")
-        upload_to_bigquery(page_stats, PROJECT_ID, DATASET_ID, TABLE_PAGES, "page")
-    else:
-        print("No page stats to upload.")
+    upload_to_bigquery(page_stats, PROJECT_ID, DATASET_ID, TABLE_PAGES, "page")
+
+    print("-" * 30)
+
+    # 3. Fetch and upload Site Daily Stats
+    site_stats = fetch_bing_data(api_key, SITE_URL, "GetRankAndTrafficStats")
+    upload_to_bigquery(site_stats, PROJECT_ID, DATASET_ID, TABLE_SITE_DAILY, "site_daily")
 
     return "Process complete", 200
 
