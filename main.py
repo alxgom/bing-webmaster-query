@@ -96,12 +96,13 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
     # 1. Create dataset if it doesn't exist
     dataset_ref = bigquery.DatasetReference(project_id, dataset_id)
     dataset = bigquery.Dataset(dataset_ref)
+    dataset.location = "EU" # Force EU location
     
     try:
         client.get_dataset(dataset_ref)
     except NotFound:
         dataset = client.create_dataset(dataset, timeout=30)
-        print(f"Created dataset {client.project}.{dataset.dataset_id}")
+        print(f"Created dataset {client.project}.{dataset.dataset_id} in EU")
         
     # Determine the name of the string field based on the data type
     string_field_name = "Query" if data_type == "query" else "Url"
@@ -123,7 +124,7 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
             bigquery.SchemaField("AvgImpressionPosition", "FLOAT64"),
             bigquery.SchemaField("AvgClickPosition", "FLOAT64"),
         ]
-        clustering_fields = ["Url", "LandingPath"]
+        clustering_fields = ["LandingPath"] # Simplified clustering
     else: # query
         schema = [
             bigquery.SchemaField("Date", "DATE"),

@@ -96,11 +96,13 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
     # Ensure dataset exists
     dataset_ref = bigquery.DatasetReference(project_id, dataset_id)
     dataset = bigquery.Dataset(dataset_ref)
+    dataset.location = "EU" # Force EU location
+    
     try:
         client.get_dataset(dataset_ref)
     except NotFound:
         dataset = client.create_dataset(dataset, timeout=30)
-        print(f"Created dataset {dataset_id}")
+        print(f"Created dataset {dataset_id} in EU")
         
     # Ensure table exists
     table_ref = dataset_ref.table(table_id)
@@ -122,7 +124,7 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
             bigquery.SchemaField("AvgImpressionPosition", "FLOAT64"),
             bigquery.SchemaField("AvgClickPosition", "FLOAT64"),
         ]
-        clustering_fields = ["Url", "LandingPath"]
+        clustering_fields = ["LandingPath"] # Simplified clustering
     else: # query
         string_field_name = "Query"
         schema = [

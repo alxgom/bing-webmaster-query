@@ -29,7 +29,7 @@ jobs:
         with:
           name: 'bing-webmaster-updater'
           runtime: 'python311'
-          region: 'us-central1' # Change to your preferred region
+          region: 'europe-west1' # Moved to EU to match Search Console data
           entry_point: 'main'
           trigger_http: true
           allow_unauthenticated: false
