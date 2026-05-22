@@ -4,6 +4,7 @@ This project automates the retrieval of Search Performance statistics from the B
 
 ## Features
 - **Scalable Registry**: Manage 1 or 100 websites by simply adding them to a local JSON registry.
+- **In-Code Deduplication**: Automatically checks BigQuery before each insert to prevent duplicate records for the same date/site.
 - **Daily Site-Level Stats**: Fetches daily clicks and impressions for the entire site.
 - **Weekly Query & Page Stats**: Fetches detailed keyword and URL performance data.
 - **Historical Backfill**: A script to fetch the last 16 months of available data for all sites in the registry.
@@ -48,6 +49,11 @@ This project automates the retrieval of Search Performance statistics from the B
 
 ### 5. Deploy Daily Updates
 Deploy the engine via the included **GitHub Actions** workflow, which uses **Workload Identity Federation** for secure, keyless deployment.
+
+## Future Roadmap (TODO)
+- **Concurrency**: Implement `asyncio` to fetch data for multiple sites in parallel to improve performance for large registries.
+- **Advanced Monitoring**: Add Slack/Discord webhook alerts for failed data ingestion runs.
+- **Extended Metrics**: Support for Keyword Research and Sitemap status endpoints.
 
 ## Repository Security
 This project includes a `safe-commit` skill for Gemini CLI users to ensure that credentials, registries, and sensitive files are never accidentally committed.

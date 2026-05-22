@@ -161,11 +161,44 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime('%Y-%m-%d')
     print(f"Filtering records for {table_id} since {cutoff_date}...")
 
+    # --- DEDUPLICATION CHECK ---
+    # Check what data already exists in BigQuery for this date range
+    existing_records = set()
+    try:
+        query = f"""
+            SELECT DISTINCT Date, {string_field_name}
+            FROM `{project_id}.{dataset_id}.{table_id}`
+            WHERE Date >= '{cutoff_date}'
+        """
+        if data_type == "site_daily":
+            # Site daily doesn't have a string key, just dedupe by Date
+            query = f"SELECT DISTINCT Date FROM `{project_id}.{dataset_id}.{table_id}` WHERE Date >= '{cutoff_date}'"
+        
+        query_job = client.query(query)
+        results = query_job.result()
+        for row in results:
+            if data_type == "site_daily":
+                existing_records.add(row.Date.strftime('%Y-%m-%d'))
+            else:
+                existing_records.add((row.Date.strftime('%Y-%m-%d'), row[string_field_name]))
+        print(f"Found {len(existing_records)} existing records in BigQuery for the current window.")
+    except Exception as e:
+        print(f"Could not check for existing records (likely first run): {e}")
+
     rows_to_insert = []
     for s in data_records:
         parsed_date = parse_bing_date(s.get("Date"))
         
         if parsed_date and parsed_date >= cutoff_date:
+            # Check if this specific record already exists
+            if data_type == "site_daily":
+                if parsed_date in existing_records:
+                    continue
+            else:
+                val = s.get("Query", "")
+                if (parsed_date, val) in existing_records:
+                    continue
+
             row = {"Date": parsed_date}
             
             if data_type == "site_daily":
@@ -190,7 +223,7 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
             rows_to_insert.append(row)
         
     if not rows_to_insert:
-        print(f"No recent rows to insert into {table_id}.")
+        print(f"No new records to insert into {table_id} (all were duplicates or outside window).")
         return
 
     errors = client.insert_rows_json(table_ref, rows_to_insert)
