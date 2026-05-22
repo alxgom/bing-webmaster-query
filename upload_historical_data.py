@@ -3,6 +3,7 @@ import urllib.request
 import urllib.parse
 import json
 import re
+import time
 from datetime import datetime, timezone, timedelta
 from google.cloud import bigquery
 from google.cloud import secretmanager
@@ -111,15 +112,26 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
             bigquery.SchemaField("Clicks", "INTEGER"),
         ]
         clustering_fields = []
-    else:
-        string_field_name = "Query" if data_type == "query" else "Url"
+    elif data_type == "page":
+        schema = [
+            bigquery.SchemaField("Date", "DATE"),
+            bigquery.SchemaField("Url", "STRING"),
+            bigquery.SchemaField("LandingPath", "STRING"),
+            bigquery.SchemaField("Impressions", "INTEGER"),
+            bigquery.SchemaField("Clicks", "INTEGER"),
+            bigquery.SchemaField("AvgImpressionPosition", "FLOAT64"),
+            bigquery.SchemaField("AvgClickPosition", "FLOAT64"),
+        ]
+        clustering_fields = ["Url", "LandingPath"]
+    else: # query
+        string_field_name = "Query"
         schema = [
             bigquery.SchemaField("Date", "DATE"),
             bigquery.SchemaField(string_field_name, "STRING"),
             bigquery.SchemaField("Impressions", "INTEGER"),
             bigquery.SchemaField("Clicks", "INTEGER"),
-            bigquery.SchemaField("AvgImpressionPosition", "INTEGER"),
-            bigquery.SchemaField("AvgClickPosition", "INTEGER"),
+            bigquery.SchemaField("AvgImpressionPosition", "FLOAT64"),
+            bigquery.SchemaField("AvgClickPosition", "FLOAT64"),
         ]
         clustering_fields = [string_field_name]
 
@@ -132,7 +144,8 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         client.get_table(table_ref)
     except NotFound:
         table = client.create_table(table, timeout=30)
-        print(f"Created table {table_id}")
+        print(f"Created table {table_id}. Waiting for propagation...")
+        time.sleep(10) # Prevent race condition
         
     # Format and Insert
     rows_to_insert = []
@@ -142,8 +155,18 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         if data_type == "site_daily":
             row["Impressions"] = s.get("Impressions", 0)
             row["Clicks"] = s.get("Clicks", 0)
-        else:
-            string_field_name = "Query" if data_type == "query" else "Url"
+        elif data_type == "page":
+            url = s.get("Query", "") # Bing uses 'Query' for URLs in GetPageStats
+            row["Url"] = url
+            # Extract path from URL (remove protocol and domain)
+            path = re.sub(r'^https?://[^/]+', '', url)
+            row["LandingPath"] = path if path else "/"
+            row["Impressions"] = s.get("Impressions", 0)
+            row["Clicks"] = s.get("Clicks", 0)
+            row["AvgImpressionPosition"] = s.get("AvgImpressionPosition", 0)
+            row["AvgClickPosition"] = s.get("AvgClickPosition", 0)
+        else: # query
+            string_field_name = "Query"
             row[string_field_name] = s.get(string_field_name, "")
             row["Impressions"] = s.get("Impressions", 0)
             row["Clicks"] = s.get("Clicks", 0)
