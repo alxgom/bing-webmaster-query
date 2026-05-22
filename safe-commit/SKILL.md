@@ -28,11 +28,18 @@ Confirm that **NONE** of the following are in the "Changes to be committed" list
 - Local development plans containing internal details (e.g., `GCP_DEPLOYMENT.md`)
 - AI development tools and skills (e.g., `.gemini/`, `*.skill`)
 
-### 4. Final Confirmation
-You must explicitly output the following statement before running the `git commit` command:
-> "SECURITY CHECK: I have verified that no sensitive files (JSON keys, env files, or plain-text secrets) are staged for this commit."
+### 4. Agentic "By-Eye" Content Review
+You MUST perform a manual, high-scrutiny review of the staged code. Do not rely solely on the automated script.
+1. Run `git diff --staged` and read the full content of the changes.
+2. **Scan for "Secret-Like" Strings:** Look for long, high-entropy strings (e.g., `AIza...`, `ghp_...`, `ey...`) or any hardcoded values assigned to variables named `KEY`, `SECRET`, `TOKEN`, or `PASSWORD`.
+3. **Check configuration files:** Ensure no local paths, internal IDs, or sensitive environment names are present.
+4. **Final Verdict:** If anything looks like a secret, stop and ask for clarification.
 
-### 5. Commit
+### 5. Final Confirmation
+You must explicitly output the following statement before running the `git commit` command:
+> "SECURITY CHECK: I have performed an agentic 'by-eye' review of the staged code and verified that no sensitive files or hardcoded secrets (API keys, tokens, etc.) are present."
+
+### 6. Commit
 Use a clear, concise commit message.
 
 ## Resources
