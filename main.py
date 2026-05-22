@@ -17,15 +17,25 @@ TABLE_PAGES = "searchdata_pages"
 SECRET_ID = "BING_API_KEY"  # Name of the secret in GCP Secret Manager
 
 def get_secret(project_id, secret_id, version_id="latest"):
-    """Retrieves a secret from GCP Secret Manager."""
-    client = secretmanager.SecretManagerServiceClient()
-    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+    """Retrieves a secret from local JSON or GCP Secret Manager."""
+    # 1. Try local JSON first (for local development)
+    if os.path.exists("bing_credentials.json"):
+        try:
+            with open("bing_credentials.json", "r") as f:
+                config = json.load(f)
+                return config.get("bing_api_key")
+        except Exception as e:
+            print(f"Error reading local credentials: {e}")
+
+    # 2. Fallback to GCP Secret Manager
     try:
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
         response = client.access_secret_version(request={"name": name})
         return response.payload.data.decode("UTF-8")
     except Exception as e:
-        print(f"Error retrieving secret {secret_id}: {e}")
-        return None
+        print(f"Secret Manager not available or secret {secret_id} not found. (Using local or environment if provided). Error: {e}")
+        return os.environ.get("BING_API_KEY")
 
 def parse_bing_date(date_str):
     """Parses Bing Webmaster API date format like /Date(1771574400000-0800)/ to YYYY-MM-DD."""
