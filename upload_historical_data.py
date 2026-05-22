@@ -9,35 +9,46 @@ from google.cloud import bigquery
 from google.cloud import secretmanager
 from google.api_core.exceptions import NotFound
 
-# Configuration
-SITE_URL = "https://alexisgomel.com/"
-PROJECT_ID = "web-alexisgomel"
-DATASET_ID = "webmaster"
-TABLE_QUERIES = "searchdata_queries"
-TABLE_PAGES = "searchdata_pages"
-TABLE_SITE_DAILY = "searchdata_site_daily"
-SECRET_ID = "BING_API_KEY"
+# Load Public Config
+with open("config.json", "r") as f:
+    CONFIG = json.load(f)
 
-def get_secret(project_id, secret_id, version_id="latest"):
-    """Retrieves a secret from local JSON or GCP Secret Manager."""
+DATASET_ID = CONFIG["dataset_id"]
+LOCATION = CONFIG["location"]
+TABLE_QUERIES = CONFIG["tables"]["queries"]
+TABLE_PAGES = CONFIG["tables"]["pages"]
+TABLE_SITE_DAILY = CONFIG["tables"]["site_daily"]
+SECRET_ID = CONFIG["secret_id"]
+
+def get_credentials():
+    """Retrieves credentials from local JSON or environment variables."""
+    creds = {
+        "bing_api_key": None,
+        "site_url": "https://alexisgomel.com/", # Default
+        "project_id": "web-alexisgomel" # Default
+    }
+
     # 1. Try local JSON first (for local development)
     if os.path.exists("bing_credentials.json"):
         try:
             with open("bing_credentials.json", "r") as f:
-                config = json.load(f)
-                return config.get("bing_api_key")
+                config_file = json.load(f)
+                creds.update(config_file)
         except Exception as e:
             print(f"Error reading local credentials: {e}")
 
-    # 2. Fallback to GCP Secret Manager
-    try:
-        client = secretmanager.SecretManagerServiceClient()
-        name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
-        response = client.access_secret_version(request={"name": name})
-        return response.payload.data.decode("UTF-8")
-    except Exception as e:
-        print(f"Secret Manager not available or secret {secret_id} not found. (Using local or environment if provided). Error: {e}")
-        return os.environ.get("BING_API_KEY")
+    # 2. Fallback to Secret Manager for API Key if not found locally
+    if not creds.get("bing_api_key"):
+        try:
+            client = secretmanager.SecretManagerServiceClient()
+            name = f"projects/{creds['project_id']}/secrets/{SECRET_ID}/versions/latest"
+            response = client.access_secret_version(request={"name": name})
+            creds["bing_api_key"] = response.payload.data.decode("UTF-8")
+        except Exception as e:
+            print(f"Secret Manager error: {e}")
+            creds["bing_api_key"] = os.environ.get("BING_API_KEY")
+
+    return creds
 
 def parse_bing_date(date_str):
     """Parses Bing Webmaster API date format like /Date(1771574400000-0800)/ to YYYY-MM-DD."""
@@ -93,16 +104,16 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         
     client = bigquery.Client(project=project_id)
     
-    # Ensure dataset exists
+    # 1. Create dataset if it doesn't exist
     dataset_ref = bigquery.DatasetReference(project_id, dataset_id)
     dataset = bigquery.Dataset(dataset_ref)
-    dataset.location = "EU" # Force EU location
+    dataset.location = LOCATION
     
     try:
         client.get_dataset(dataset_ref)
     except NotFound:
         dataset = client.create_dataset(dataset, timeout=30)
-        print(f"Created dataset {dataset_id} in EU")
+        print(f"Created dataset {dataset_id} in {LOCATION}")
         
     # Ensure table exists
     table_ref = dataset_ref.table(table_id)
@@ -124,7 +135,7 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
             bigquery.SchemaField("AvgImpressionPosition", "FLOAT64"),
             bigquery.SchemaField("AvgClickPosition", "FLOAT64"),
         ]
-        clustering_fields = ["LandingPath"] # Simplified clustering
+        clustering_fields = ["LandingPath"]
     else: # query
         string_field_name = "Query"
         schema = [
@@ -147,7 +158,7 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
     except NotFound:
         table = client.create_table(table, timeout=30)
         print(f"Created table {table_id}. Waiting for propagation...")
-        time.sleep(10) # Prevent race condition
+        time.sleep(10)
         
     # Format and Insert
     rows_to_insert = []
@@ -160,20 +171,19 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         elif data_type == "page":
             url = s.get("Query", "") # Bing uses 'Query' for URLs in GetPageStats
             row["Url"] = url
-            # Extract path from URL (remove protocol and domain)
             path = re.sub(r'^https?://[^/]+', '', url)
             row["LandingPath"] = path if path else "/"
             row["Impressions"] = s.get("Impressions", 0)
             row["Clicks"] = s.get("Clicks", 0)
-            row["AvgImpressionPosition"] = s.get("AvgImpressionPosition", 0)
-            row["AvgClickPosition"] = s.get("AvgClickPosition", 0)
+            row["AvgImpressionPosition"] = s.get("AvgImpressionPosition", 0.0)
+            row["AvgClickPosition"] = s.get("AvgClickPosition", 0.0)
         else: # query
             string_field_name = "Query"
             row[string_field_name] = s.get(string_field_name, "")
             row["Impressions"] = s.get("Impressions", 0)
             row["Clicks"] = s.get("Clicks", 0)
-            row["AvgImpressionPosition"] = s.get("AvgImpressionPosition", 0)
-            row["AvgClickPosition"] = s.get("AvgClickPosition", 0)
+            row["AvgImpressionPosition"] = s.get("AvgImpressionPosition", 0.0)
+            row["AvgClickPosition"] = s.get("AvgClickPosition", 0.0)
             
         rows_to_insert.append(row)
         
@@ -184,26 +194,26 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         print(f"Errors in {table_id}: {errors}")
 
 def main():
-    api_key = get_secret(PROJECT_ID, SECRET_ID)
-    if not api_key:
+    creds = get_credentials()
+    if not creds["bing_api_key"]:
         print("Failed to retrieve API Key.")
         return
 
     # 1. Historical Query Stats
-    query_stats = fetch_bing_data(api_key, SITE_URL, "GetQueryStats")
-    upload_to_bigquery(query_stats, PROJECT_ID, DATASET_ID, TABLE_QUERIES, "query")
+    query_stats = fetch_bing_data(creds["bing_api_key"], creds["site_url"], "GetQueryStats")
+    upload_to_bigquery(query_stats, creds["project_id"], DATASET_ID, TABLE_QUERIES, "query")
 
     print("-" * 30)
 
     # 2. Historical Page Stats
-    page_stats = fetch_bing_data(api_key, SITE_URL, "GetPageStats")
-    upload_to_bigquery(page_stats, PROJECT_ID, DATASET_ID, TABLE_PAGES, "page")
+    page_stats = fetch_bing_data(creds["bing_api_key"], creds["site_url"], "GetPageStats")
+    upload_to_bigquery(page_stats, creds["project_id"], DATASET_ID, TABLE_PAGES, "page")
 
     print("-" * 30)
 
     # 3. Historical Site Daily Stats
-    site_stats = fetch_bing_data(api_key, SITE_URL, "GetRankAndTrafficStats")
-    upload_to_bigquery(site_stats, PROJECT_ID, DATASET_ID, TABLE_SITE_DAILY, "site_daily")
+    site_stats = fetch_bing_data(creds["bing_api_key"], creds["site_url"], "GetRankAndTrafficStats")
+    upload_to_bigquery(site_stats, creds["project_id"], DATASET_ID, TABLE_SITE_DAILY, "site_daily")
 
 if __name__ == "__main__":
     main()

@@ -5,8 +5,8 @@ try {
   const sensitivePatterns = [/\.json$/, /\.env$/, /\.pem$/, /\.key$/, /credentials/i, /secret/i, /\.gemini\//, /\.skill$/];
   
   const badFiles = stagedFiles.filter(file => {
-    // Ignore this script itself
-    if (file.endsWith('check_secrets.cjs')) return false;
+    // Ignore this script itself and public config
+    if (file.endsWith('check_secrets.cjs') || file === 'config.json') return false;
     return sensitivePatterns.some(pattern => pattern.test(file));
   });
   

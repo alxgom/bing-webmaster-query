@@ -1,0 +1,10 @@
+{
+  "dataset_id": "webmaster",
+  "location": "EU",
+  "tables": {
+    "queries": "searchdata_queries",
+    "pages": "searchdata_pages",
+    "site_daily": "searchdata_site_daily"
+  },
+  "secret_id": "BING_API_KEY"
+}
