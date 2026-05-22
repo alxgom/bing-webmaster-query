@@ -22,11 +22,13 @@ This project automates the retrieval of Search Performance statistics from the B
 3. **Service Account**: Create a service account with `BigQuery Data Editor`, `BigQuery Job User`, and `Secret Manager Secret Accessor` roles.
 
 ### 3. Local Configuration
-Create a file named `bing_credentials.json` in the root directory (this file is gitignored):
+1. **Public Config**: Edit `config.json` to set your desired BigQuery Dataset ID, Table names, and **GCP Region** (e.g., `EU` or `US`).
+2. **Private Credentials**: Create a file named `bing_credentials.json` (this file is gitignored):
 ```json
 {
   "bing_api_key": "YOUR_BING_API_KEY",
-  "site_url": "https://yourwebsite.com/"
+  "site_url": "https://yourwebsite.com/",
+  "project_id": "your-gcp-project-id"
 }
 ```
 
@@ -36,7 +38,9 @@ Create a file named `bing_credentials.json` in the root directory (this file is 
 3. Run the backfill: `python upload_historical_data.py`
 
 ### 5. Deploy Daily Updates
-The recommended deployment method is via the included **GitHub Actions** workflow, which uses **Workload Identity Federation** for keyless, secure deployment.
+The recommended deployment method is via the included **GitHub Actions** workflow, which uses **Workload Identity Federation** for keyless, secure deployment. 
+
+**Note**: To change the deployment region for the Cloud Function, update the `region` field in `.github/workflows/deploy.yml`.
 
 ## Repository Security
 This project includes a `safe-commit` skill for Gemini CLI users to ensure that credentials, AI tools, and sensitive files are never accidentally committed.
