@@ -14,7 +14,7 @@ PROJECT_ID = "web-alexisgomel"
 DATASET_ID = "webmaster"
 TABLE_QUERIES = "searchdata_queries"
 TABLE_PAGES = "searchdata_pages"
-SECRET_ID = "BING_API_KEY"  # Name of the secret in GCP Secret Manager
+SECRET_ID = "BING_API_KEY"
 
 def get_secret(project_id, secret_id, version_id="latest"):
     """Retrieves a secret from GCP Secret Manager."""
@@ -49,7 +49,7 @@ def parse_bing_date(date_str):
     return date_str
 
 def fetch_bing_data(api_key, site_url, endpoint_method):
-    """Fetches Stats from Bing Webmaster API based on the endpoint method."""
+    """Fetches all available historical stats from Bing Webmaster API (usually last 16 months)."""
     if not api_key:
         print("API Key is missing. Cannot fetch data.")
         return []
@@ -57,7 +57,7 @@ def fetch_bing_data(api_key, site_url, endpoint_method):
     encoded_url = urllib.parse.quote(site_url, safe='')
     endpoint = f"https://ssl.bing.com/webmaster/api.svc/json/{endpoint_method}?siteUrl={encoded_url}&apikey={api_key}"
     
-    print(f"Fetching {endpoint_method} for {site_url} ...")
+    print(f"Fetching historical {endpoint_method} for {site_url} ...")
     req = urllib.request.Request(endpoint)
     
     try:
@@ -73,30 +73,26 @@ def fetch_bing_data(api_key, site_url, endpoint_method):
         print(f"Error fetching {endpoint_method} data from Bing: {e}")
         return []
 
-def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type, days_back=7):
-    """Uploads recent records to BigQuery, creating dataset/table if needed."""
+def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type):
+    """Uploads records to BigQuery, creating dataset/table if needed."""
     if not data_records:
         print(f"No records to upload for {table_id}.")
         return
         
     client = bigquery.Client(project=project_id)
     
-    # 1. Create dataset if it doesn't exist
+    # Ensure dataset exists
     dataset_ref = bigquery.DatasetReference(project_id, dataset_id)
     dataset = bigquery.Dataset(dataset_ref)
-    
     try:
         client.get_dataset(dataset_ref)
     except NotFound:
         dataset = client.create_dataset(dataset, timeout=30)
-        print(f"Created dataset {client.project}.{dataset.dataset_id}")
+        print(f"Created dataset {dataset_id}")
         
-    # 2. Create table if it doesn't exist
+    # Ensure table exists
     table_ref = dataset_ref.table(table_id)
-    
-    # Determine the name of the string field based on the data type
     string_field_name = "Query" if data_type == "query" else "Url"
-    
     schema = [
         bigquery.SchemaField("Date", "DATE"),
         bigquery.SchemaField(string_field_name, "STRING"),
@@ -105,84 +101,51 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         bigquery.SchemaField("AvgImpressionPosition", "INTEGER"),
         bigquery.SchemaField("AvgClickPosition", "INTEGER"),
     ]
-    
     table = bigquery.Table(table_ref, schema=schema)
-    
-    # Add partitioning and clustering
-    table.time_partitioning = bigquery.TimePartitioning(
-        type_=bigquery.TimePartitioningType.DAY,
-        field="Date"
-    )
+    table.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field="Date")
     table.clustering_fields = [string_field_name]
     
     try:
         client.get_table(table_ref)
     except NotFound:
         table = client.create_table(table, timeout=30)
-        print(f"Created table {table_id}.")
+        print(f"Created table {table_id}")
         
-    # 3. Format rows and filter for recent dates
-    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime('%Y-%m-%d')
-    print(f"Filtering records for {table_id} since {cutoff_date}...")
-
+    # Format and Insert
     rows_to_insert = []
     for s in data_records:
-        parsed_date = parse_bing_date(s.get("Date"))
+        row = {
+            "Date": parse_bing_date(s.get("Date")),
+            string_field_name: s.get(string_field_name, ""),
+            "Impressions": s.get("Impressions", 0),
+            "Clicks": s.get("Clicks", 0),
+            "AvgImpressionPosition": s.get("AvgImpressionPosition", 0),
+            "AvgClickPosition": s.get("AvgClickPosition", 0)
+        }
+        rows_to_insert.append(row)
         
-        # Only include if the date is within our window
-        if parsed_date and parsed_date >= cutoff_date:
-            row = {
-                "Date": parsed_date,
-                string_field_name: s.get(string_field_name, ""),
-                "Impressions": s.get("Impressions", 0),
-                "Clicks": s.get("Clicks", 0),
-                "AvgImpressionPosition": s.get("AvgImpressionPosition", 0),
-                "AvgClickPosition": s.get("AvgClickPosition", 0)
-            }
-            rows_to_insert.append(row)
-        
-    # 4. Insert data
-    if not rows_to_insert:
-        print(f"No recent rows (last {days_back} days) to insert into {table_id}.")
-        return
-
+    # Large historical data might need chunking, but for 16 months of stats it's usually fine in one go.
     errors = client.insert_rows_json(table_ref, rows_to_insert)
     if not errors:
-        print(f"Successfully loaded {len(rows_to_insert)} recent rows into {dataset_id}.{table_id}.")
+        print(f"Successfully loaded {len(rows_to_insert)} historical rows into {table_id}.")
     else:
-        print(f"Encountered errors while inserting rows into {table_id}: {errors}")
+        print(f"Errors in {table_id}: {errors}")
 
-def main(request=None):
-    """
-    Entry point for Cloud Function.
-    The 'request' parameter is for HTTP triggers in Google Cloud Functions.
-    """
-    # 0. Retrieve API Key from Secret Manager
+def main():
     api_key = get_secret(PROJECT_ID, SECRET_ID)
     if not api_key:
-        return "Failed to retrieve API Key from Secret Manager", 500
+        print("Failed to retrieve API Key.")
+        return
 
-    # 1. Fetch and upload Query Stats
+    # 1. Historical Query Stats
     query_stats = fetch_bing_data(api_key, SITE_URL, "GetQueryStats")
-    if query_stats:
-        print(f"Found {len(query_stats)} query records.")
-        upload_to_bigquery(query_stats, PROJECT_ID, DATASET_ID, TABLE_QUERIES, "query")
-    else:
-        print("No query stats to upload.")
+    upload_to_bigquery(query_stats, PROJECT_ID, DATASET_ID, TABLE_QUERIES, "query")
 
     print("-" * 30)
 
-    # 2. Fetch and upload Page Stats
+    # 2. Historical Page Stats
     page_stats = fetch_bing_data(api_key, SITE_URL, "GetPageStats")
-    if page_stats:
-        print(f"Found {len(page_stats)} page records.")
-        upload_to_bigquery(page_stats, PROJECT_ID, DATASET_ID, TABLE_PAGES, "page")
-    else:
-        print("No page stats to upload.")
-
-    return "Process complete", 200
+    upload_to_bigquery(page_stats, PROJECT_ID, DATASET_ID, TABLE_PAGES, "page")
 
 if __name__ == "__main__":
-    # Local execution (requires GOOGLE_APPLICATION_CREDENTIALS for local auth)
-    # and locally set BING_API_KEY if not fetching from Secret Manager
     main()
