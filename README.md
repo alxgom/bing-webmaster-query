@@ -56,8 +56,5 @@ Deploy the engine via the included **GitHub Actions** workflow, which uses **Wor
 - **Advanced Monitoring**: Add Slack/Discord webhook alerts for failed data ingestion runs.
 - **Extended Metrics**: Support for Keyword Research and Sitemap status endpoints.
 
-## Repository Security
-This project includes a `safe-commit` skill for Gemini CLI users to ensure that credentials, registries, and sensitive files are never accidentally committed.
-
 ---
 *Note: This project is intended for educational and personal use. Ensure you comply with Bing Webmaster API terms of service.*

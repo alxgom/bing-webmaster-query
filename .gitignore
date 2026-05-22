@@ -6,5 +6,6 @@ get_bing_stats.py
 .gemini/
 *.skill
 __pycache__/
+safe-commit/
 .gemini/skills/safe-commit/SKILL.md
 .gemini/skills/safe-commit/scripts/check_secrets.cjs
