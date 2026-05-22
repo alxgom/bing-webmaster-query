@@ -1,9 +1,10 @@
 # Bing Webmaster to BigQuery
 
-This project automates the retrieval of Search Performance statistics from the Bing Webmaster API and stores them in Google BigQuery. It is designed as a **scalable multi-site engine** that can manage multiple websites and datasets from a single deployment.
+This project automates the retrieval of Search Performance statistics from the Bing Webmaster API and stores them in Google BigQuery. It is designed as a **modular, scalable multi-site engine** that follows the UNIX philosophy of specialized components working together.
 
 ## Features
 - **Scalable Registry**: Manage 1 or 100 websites by simply adding them to a local JSON registry.
+- **Modular Architecture**: Decoupled components for Bing API logic, BigQuery IO, and global orchestration (UNIX philosophy).
 - **In-Code Deduplication**: Automatically checks BigQuery before each insert to prevent duplicate records for the same date/site.
 - **Daily Site-Level Stats**: Fetches daily clicks and impressions for the entire site.
 - **Weekly Query & Page Stats**: Fetches detailed keyword and URL performance data.
