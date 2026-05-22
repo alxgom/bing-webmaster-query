@@ -3,3 +3,7 @@ bing_query_stats.csv
 bing_webmaster_credentials.txt
 GCP_DEPLOYMENT.md
 get_bing_stats.py
+.gemini/
+*.skill
+.gemini/skills/safe-commit/SKILL.md
+.gemini/skills/safe-commit/scripts/check_secrets.cjs

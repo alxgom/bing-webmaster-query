@@ -2,7 +2,7 @@ const { execSync } = require('child_process');
 
 try {
   const stagedFiles = execSync('git diff --name-only --cached').toString().split('\n').filter(Boolean);
-  const sensitivePatterns = [/\.json$/, /\.env$/, /\.pem$/, /\.key$/, /credentials/i, /secret/i];
+  const sensitivePatterns = [/\.json$/, /\.env$/, /\.pem$/, /\.key$/, /credentials/i, /secret/i, /\.gemini\//, /\.skill$/];
   
   const badFiles = stagedFiles.filter(file => {
     // Ignore this script itself

@@ -26,6 +26,7 @@ Confirm that **NONE** of the following are in the "Changes to be committed" list
 - Service Account keys (e.g., `*.json`)
 - API key storage (e.g., `*_credentials.txt`)
 - Local development plans containing internal details (e.g., `GCP_DEPLOYMENT.md`)
+- AI development tools and skills (e.g., `.gemini/`, `*.skill`)
 
 ### 4. Final Confirmation
 You must explicitly output the following statement before running the `git commit` command:
