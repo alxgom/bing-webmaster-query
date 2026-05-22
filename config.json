@@ -1,5 +1,4 @@
 {
-  "dataset_id": "webmaster",
   "location": "EU",
   "tables": {
     "queries": "searchdata_queries",

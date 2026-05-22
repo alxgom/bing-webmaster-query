@@ -9,46 +9,45 @@ from google.cloud import bigquery
 from google.cloud import secretmanager
 from google.api_core.exceptions import NotFound
 
-# Load Public Config
+# Load Public Policy Config
 with open("config.json", "r") as f:
     CONFIG = json.load(f)
 
-DATASET_ID = CONFIG["dataset_id"]
 LOCATION = CONFIG["location"]
 TABLE_QUERIES = CONFIG["tables"]["queries"]
 TABLE_PAGES = CONFIG["tables"]["pages"]
 TABLE_SITE_DAILY = CONFIG["tables"]["site_daily"]
 SECRET_ID = CONFIG["secret_id"]
 
-def get_credentials():
-    """Retrieves credentials from local JSON or environment variables."""
-    creds = {
+def get_registry():
+    """Retrieves the site registry and global credentials."""
+    registry = {
         "bing_api_key": None,
-        "site_url": "https://alexisgomel.com/", # Default
-        "project_id": "web-alexisgomel" # Default
+        "project_id": "web-alexisgomel", # Default
+        "sites": []
     }
 
-    # 1. Try local JSON first (for local development)
+    # 1. Try local JSON first (for local development and Multi-Site Registry)
     if os.path.exists("bing_credentials.json"):
         try:
             with open("bing_credentials.json", "r") as f:
                 config_file = json.load(f)
-                creds.update(config_file)
+                registry.update(config_file)
         except Exception as e:
-            print(f"Error reading local credentials: {e}")
+            print(f"Error reading site registry: {e}")
 
     # 2. Fallback to Secret Manager for API Key if not found locally
-    if not creds.get("bing_api_key"):
+    if not registry.get("bing_api_key"):
         try:
             client = secretmanager.SecretManagerServiceClient()
-            name = f"projects/{creds['project_id']}/secrets/{SECRET_ID}/versions/latest"
+            name = f"projects/{registry['project_id']}/secrets/{SECRET_ID}/versions/latest"
             response = client.access_secret_version(request={"name": name})
-            creds["bing_api_key"] = response.payload.data.decode("UTF-8")
+            registry["bing_api_key"] = response.payload.data.decode("UTF-8")
         except Exception as e:
             print(f"Secret Manager error: {e}")
-            creds["bing_api_key"] = os.environ.get("BING_API_KEY")
+            registry["bing_api_key"] = os.environ.get("BING_API_KEY")
 
-    return creds
+    return registry
 
 def parse_bing_date(date_str):
     """Parses Bing Webmaster API date format like /Date(1771574400000-0800)/ to YYYY-MM-DD."""
@@ -201,25 +200,36 @@ def upload_to_bigquery(data_records, project_id, dataset_id, table_id, data_type
         print(f"Errors in {table_id}: {errors}")
 
 def main(request=None):
-    creds = get_credentials()
-    if not creds["bing_api_key"]:
+    registry = get_registry()
+    if not registry["bing_api_key"]:
         return "Failed to retrieve API Key", 500
 
-    # 1. Query Stats
-    query_stats = fetch_bing_data(creds["bing_api_key"], creds["site_url"], "GetQueryStats")
-    upload_to_bigquery(query_stats, creds["project_id"], DATASET_ID, TABLE_QUERIES, "query")
+    if not registry["sites"]:
+        print("No sites found in registry.")
+        return "No sites configured", 200
 
-    print("-" * 30)
+    for site in registry["sites"]:
+        site_url = site["site_url"]
+        dataset_id = site["dataset_id"]
+        print(f"Processing site: {site_url} -> Dataset: {dataset_id}")
 
-    # 2. Page Stats
-    page_stats = fetch_bing_data(creds["bing_api_key"], creds["site_url"], "GetPageStats")
-    upload_to_bigquery(page_stats, creds["project_id"], DATASET_ID, TABLE_PAGES, "page")
+        # 1. Query Stats
+        query_stats = fetch_bing_data(registry["bing_api_key"], site_url, "GetQueryStats")
+        upload_to_bigquery(query_stats, registry["project_id"], dataset_id, TABLE_QUERIES, "query")
 
-    print("-" * 30)
+        print("-" * 15)
 
-    # 3. Site Daily Stats
-    site_stats = fetch_bing_data(creds["bing_api_key"], creds["site_url"], "GetRankAndTrafficStats")
-    upload_to_bigquery(site_stats, creds["project_id"], DATASET_ID, TABLE_SITE_DAILY, "site_daily")
+        # 2. Page Stats
+        page_stats = fetch_bing_data(registry["bing_api_key"], site_url, "GetPageStats")
+        upload_to_bigquery(page_stats, registry["project_id"], dataset_id, TABLE_PAGES, "page")
+
+        print("-" * 15)
+
+        # 3. Site Daily Stats
+        site_stats = fetch_bing_data(registry["bing_api_key"], site_url, "GetRankAndTrafficStats")
+        upload_to_bigquery(site_stats, registry["project_id"], dataset_id, TABLE_SITE_DAILY, "site_daily")
+
+        print("=" * 30)
 
     return "Process complete", 200
 
