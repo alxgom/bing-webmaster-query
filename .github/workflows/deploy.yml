@@ -21,11 +21,8 @@ jobs:
         id: auth
         uses: 'google-github-actions/auth@v2'
         with:
-          # You will need to set up Workload Identity Federation or use a Service Account Key
-          # Recommendation: Use Workload Identity Federation
-          # workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/my-pool/providers/my-provider'
-          # service_account: 'my-service-account@web-alexisgomel.iam.gserviceaccount.com'
-          credentials_json: '${{ secrets.GCP_SA_KEY }}' # Alternative if not using Workload Identity
+          workload_identity_provider: 'projects/454656526702/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions-sa@web-alexisgomel.iam.gserviceaccount.com'
 
       - name: 'Deploy to Cloud Functions'
         uses: 'google-github-actions/deploy-cloud-functions@v2'
