@@ -49,7 +49,23 @@ This project automates the retrieval of Search Performance statistics from the B
 3. Run the backfill for all registered sites: `python upload_historical_data.py`
 
 ### 5. Deploy Daily Updates
-Deploy the engine via the included **GitHub Actions** workflow, which uses **Workload Identity Federation** for secure, keyless deployment.
+Deploy the engine via the included **GitHub Actions** workflow (`deploy.yml`), which uses **Workload Identity Federation** for secure, keyless deployment.
+
+To secure your public repository:
+1. In your GitHub repository, go to **Settings** -> **Secrets and variables** -> **Actions**.
+2. Click **New repository secret** and create a secret named `GCP_CONFIG` with your deployment details:
+   ```json
+    {
+      "PROJECT_ID": "your-gcp-project-id",
+      "DATASET_ID": "your-bigquery-dataset-id",
+      "SITE_URL": "https://your-website.com/",
+      "REGION": "europe-west1",
+      "WIF_PROVIDER": "projects/your-project-number/locations/global/workloadIdentityPools/github-pool/providers/github-provider",
+      "WIF_SERVICE_ACCOUNT": "github-actions-sa@your-gcp-project-id.iam.gserviceaccount.com",
+      "FUNCTION_NAME": "bing-webmaster-updater"
+    }
+   ```
+3. Push your changes to the `main` branch to automatically trigger the Gen 2 Cloud Function deployment.
 
 ## Future Roadmap (TODO)
 - **Concurrency**: Implement `asyncio` to fetch data for multiple sites in parallel to improve performance for large registries.

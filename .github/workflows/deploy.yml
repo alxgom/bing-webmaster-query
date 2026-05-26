@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -15,21 +16,24 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Google Auth
         id: auth
-        uses: 'google-github-actions/auth@v2'
+        uses: 'google-github-actions/auth@v3'
         with:
-          workload_identity_provider: 'projects/454656526702/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
-          service_account: 'github-actions-sa@web-alexisgomel.iam.gserviceaccount.com'
+          workload_identity_provider: ${{ fromJson(secrets.GCP_CONFIG).WIF_PROVIDER }}
+          service_account: ${{ fromJson(secrets.GCP_CONFIG).WIF_SERVICE_ACCOUNT }}
 
       - name: 'Deploy to Cloud Functions'
-        uses: 'google-github-actions/deploy-cloud-functions@v2'
+        uses: 'google-github-actions/deploy-cloud-functions@v4'
         with:
-          name: 'bing-webmaster-updater'
+          name: ${{ fromJson(secrets.GCP_CONFIG).FUNCTION_NAME }}
           runtime: 'python311'
-          region: 'europe-west1' # Moved to EU to match Search Console data
+          region: ${{ fromJson(secrets.GCP_CONFIG).REGION }}
           entry_point: 'main'
-          trigger_http: true
-          allow_unauthenticated: false
+          env_vars: |-
+            PROJECT_ID=${{ fromJson(secrets.GCP_CONFIG).PROJECT_ID }}
+            DATASET_ID=${{ fromJson(secrets.GCP_CONFIG).DATASET_ID }}
+            SECRET_ID=BING_API_KEY
+            SITE_URL=${{ fromJson(secrets.GCP_CONFIG).SITE_URL }}

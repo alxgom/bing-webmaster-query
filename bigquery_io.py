@@ -3,9 +3,9 @@ from datetime import datetime, timezone, timedelta
 from google.cloud import bigquery
 from google.api_core.exceptions import NotFound
 
-def upload_rows(client, project_id, dataset_id, table_id, schema, rows, partitioning_field="Date", clustering_fields=None, location="EU", dedupe_field=None):
+def upload_rows(client, project_id, dataset_id, table_id, schema, rows, partitioning_field="Date", clustering_fields=None, location="EU"):
     """
-    Generic BigQuery uploader with deduplication support.
+    BigQuery uploader with clear-and-insert (overwrite) support for mutable recent data.
     """
     if not rows:
         print(f"No rows to upload for {table_id}.")
@@ -36,45 +36,45 @@ def upload_rows(client, project_id, dataset_id, table_id, schema, rows, partitio
         print(f"Created table {table_id}. Waiting for propagation...")
         time.sleep(10)
 
-    # 3. Deduplication (In-memory filter against BigQuery)
-    # We assume 'Date' is always one of the dedupe keys
-    cutoff_date = min(r["Date"] for r in rows)
-    existing_keys = set()
-    try:
-        select_fields = "Date"
-        if dedupe_field:
-            select_fields += f", {dedupe_field}"
+    # 3. In-Memory Deduplication of input data (just in case)
+    seen = set()
+    deduped_rows = []
+    for r in rows:
+        if "Url" in r:
+            key = (r["Date"], r.get("SiteUrl"), r["Url"])
+        elif "Query" in r:
+            key = (r["Date"], r.get("SiteUrl"), r["Query"])
+        else:
+            key = (r["Date"], r.get("SiteUrl"))
             
+        if key not in seen:
+            seen.add(key)
+            deduped_rows.append(r)
+    
+    original_count = len(rows)
+    rows = deduped_rows
+    if len(rows) < original_count:
+        print(f"In-memory deduplication reduced count from {original_count} to {len(rows)} rows.")
+
+    # 4. Overwrite Strategy: Delete existing records in BigQuery for the sliding date window
+    cutoff_date = min(r["Date"] for r in rows)
+    try:
         # Add SiteUrl filter if present in rows
         site_url_val = rows[0].get("SiteUrl")
         site_url_filter = f" AND SiteUrl = '{site_url_val}'" if site_url_val else ""
         
-        query = f"SELECT DISTINCT {select_fields} FROM `{project_id}.{dataset_id}.{table_id}` WHERE Date >= '{cutoff_date}'{site_url_filter}"
-        query_job = client.query(query)
-        for row in query_job.result():
-            if dedupe_field:
-                existing_keys.add((row.Date.strftime('%Y-%m-%d'), row[dedupe_field]))
-            else:
-                existing_keys.add(row.Date.strftime('%Y-%m-%d'))
-        
-        # Filter rows
-        original_count = len(rows)
-        if dedupe_field:
-            rows = [r for r in rows if (r["Date"], r[dedupe_field]) not in existing_keys]
-        else:
-            rows = [r for r in rows if r["Date"] not in existing_keys]
-        
-        print(f"Deduplication: {original_count} -> {len(rows)} rows (after checking BQ).")
+        delete_query = f"DELETE FROM `{project_id}.{dataset_id}.{table_id}` WHERE Date >= '{cutoff_date}'{site_url_filter}"
+        print(f"Clearing old records: {delete_query}")
+        delete_job = client.query(delete_query)
+        delete_job.result() # Wait for completion
+        print(f"Successfully cleared old records in {table_id} for Date >= {cutoff_date}.")
     except Exception as e:
-        print(f"Deduplication check skipped (table might be empty): {e}")
+        print(f"Clear query skipped (table might be empty or query failed): {e}")
 
-    if not rows:
-        print(f"No new data to insert into {table_id}.")
-        return
-
-    # 4. Insert
+    # 5. Insert
     errors = client.insert_rows_json(table_ref, rows)
     if not errors:
         print(f"Successfully loaded {len(rows)} rows into {dataset_id}.{table_id}.")
     else:
         print(f"BigQuery Insert Errors in {table_id}: {errors}")
+

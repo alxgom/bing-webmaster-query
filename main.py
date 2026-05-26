@@ -106,18 +106,10 @@ def process_site(bq_client, registry, site, days_back=7):
             ]
             clustering_fields = ["SiteUrl", "Query"]
 
-        # Dedupe field for BQ query
-        if data_type == "pages":
-            bq_dedupe_field = "Url"
-        elif data_type == "queries":
-            bq_dedupe_field = "Query"
-        else:
-            bq_dedupe_field = None
-
         upload_rows(
             bq_client, project_id, dataset_id, table_id, 
             schema, rows, clustering_fields=clustering_fields, 
-            location=LOCATION, dedupe_field=bq_dedupe_field
+            location=LOCATION
         )
 
 def main(request=None):
