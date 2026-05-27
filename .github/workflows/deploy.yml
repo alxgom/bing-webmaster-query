@@ -32,7 +32,7 @@ jobs:
           runtime: 'python311'
           region: ${{ fromJson(secrets.GCP_CONFIG).REGION }}
           entry_point: 'main'
-          env_vars: |-
+          environment_variables: |-
             PROJECT_ID=${{ fromJson(secrets.GCP_CONFIG).PROJECT_ID }}
             DATASET_ID=${{ fromJson(secrets.GCP_CONFIG).DATASET_ID }}
             SECRET_ID=BING_API_KEY
