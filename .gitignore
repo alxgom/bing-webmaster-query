@@ -3,6 +3,7 @@ bing_query_stats.csv
 bing_credentials.json
 GCP_DEPLOYMENT.md
 get_bing_stats.py
+scripts/
 .gemini/
 *.skill
 __pycache__/

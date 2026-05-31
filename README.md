@@ -21,7 +21,7 @@ This project automates the retrieval of Search Performance statistics from the B
 ### 2. Google Cloud Setup
 1. **Enable APIs**: BigQuery, Secret Manager, Cloud Functions, and Artifact Registry.
 2. **Store Bing API Key**: Create a secret named `BING_API_KEY` in Secret Manager.
-3. **Service Account**: Create a service account with `BigQuery Data Editor`, `BigQuery Job User`, and `Secret Manager Secret Accessor` roles.
+3. **Runtime Permissions**: Ensure the Cloud Function's runtime service account (e.g., the default compute service account) has `BigQuery Data Editor`, `BigQuery Job User`, and `Secret Manager Secret Accessor` roles.
 
 ### 3. Site Registry Configuration
 1. **Global Config**: Edit `config.json` to set your preferred **GCP Region** (`EU` or `US`) and table names.
@@ -53,19 +53,15 @@ Deploy the engine via the included **GitHub Actions** workflow (`deploy.yml`), w
 
 To secure your public repository:
 1. In your GitHub repository, go to **Settings** -> **Secrets and variables** -> **Actions**.
-2. Click **New repository secret** and create a secret named `GCP_CONFIG` with your deployment details:
-   ```json
-    {
-      "PROJECT_ID": "your-gcp-project-id",
-      "DATASET_ID": "your-bigquery-dataset-id",
-      "SITE_URL": "https://your-website.com/",
-      "REGION": "europe-west1",
-      "WIF_PROVIDER": "projects/your-project-number/locations/global/workloadIdentityPools/github-pool/providers/github-provider",
-      "WIF_SERVICE_ACCOUNT": "github-actions-sa@your-gcp-project-id.iam.gserviceaccount.com",
-      "FUNCTION_NAME": "bing-webmaster-updater"
-    }
-   ```
+2. Click **New repository secret** and create a secret named `GCP_CONFIG` with your deployment details.
 3. Push your changes to the `main` branch to automatically trigger the Gen 2 Cloud Function deployment.
+
+### 6. Automate with Cloud Scheduler
+To run the function automatically every day, configure a Cloud Scheduler job:
+1. **Trigger**: Use an HTTP GET request to the Cloud Function URL.
+2. **Authentication**: Use **OIDC token** authentication.
+3. **Service Account**: Use a dedicated service account with the `Cloud Run Invoker` role for the function.
+4. **Audience**: Set the audience to the Cloud Function URL.
 
 ## Future Roadmap (TODO)
 - **Concurrency**: Implement `asyncio` to fetch data for multiple sites in parallel to improve performance for large registries.
